@@ -1,0 +1,4 @@
+paho-mqtt
+flask
+smbus2
+pymysql

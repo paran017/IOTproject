@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>IoT Smart Safe Dashboard</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #0b1020;
+            color: #e8eefc;
+        }
+
+        header {
+            padding: 24px;
+            background: #111a33;
+            border-bottom: 1px solid #233153;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+
+        header p {
+            margin: 8px 0 0;
+            color: #9fb0d8;
+        }
+
+        .container {
+            padding: 24px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .card {
+            background: #131c35;
+            border: 1px solid #26365f;
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+        }
+
+        .card h2 {
+            margin-top: 0;
+            font-size: 20px;
+            color: #ffffff;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: 150px 1fr;
+            gap: 10px;
+            font-size: 16px;
+        }
+
+        .label {
+            color: #9fb0d8;
+        }
+
+        .value {
+            font-weight: bold;
+        }
+
+        .normal {
+            color: #77e38f;
+        }
+
+        .caution {
+            color: #ffd166;
+        }
+
+        .warning {
+            color: #ff9f1c;
+        }
+
+        .danger {
+            color: #ff4d6d;
+        }
+
+        .intrusion {
+            color: #ff1744;
+            font-weight: bold;
+        }
+
+        button {
+            border: none;
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin: 6px 6px 6px 0;
+            cursor: pointer;
+            background: #2f80ed;
+            color: white;
+            font-size: 15px;
+        }
+
+        button:hover {
+            background: #1f6fd1;
+        }
+
+        button.danger-btn {
+            background: #e63946;
+        }
+
+        button.gray-btn {
+            background: #495267;
+        }
+
+        .otp-box {
+            font-size: 34px;
+            font-weight: bold;
+            letter-spacing: 3px;
+            padding: 16px;
+            background: #0b1020;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid #26365f;
+        }
+
+        .event-list {
+            max-height: 360px;
+            overflow-y: auto;
+        }
+
+        .event {
+            padding: 12px;
+            border-bottom: 1px solid #26365f;
+        }
+
+        .event small {
+            color: #9fb0d8;
+        }
+
+        .full {
+            grid-column: 1 / 3;
+        }
+
+        @media (max-width: 800px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+
+            .full {
+                grid-column: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>스마트 금고 대시보드</h1>
+    <p>Raspberry Pi · MQTT · OTP 인증 · 이상 접근 감지</p>
+</header>
+
+<div class="container">
+    <div class="card">
+        <h2>현재 상태</h2>
+        <div class="status-grid">
+            <div class="label">금고 상태</div>
+            <div class="value" id="safeLocked">-</div>
+
+            <div class="label">문 상태</div>
+            <div class="value" id="doorClosed">-</div>
+
+            <div class="label">위험도</div>
+            <div class="value" id="riskScore">-</div>
+
+            <div class="label">위험 단계</div>
+            <div class="value" id="riskLevel">-</div>
+
+            <div class="label">OTP 상태</div>
+            <div class="value" id="otpStatus">-</div>
+
+            <div class="label">장치 OTP 상태</div>
+            <div class="value" id="deviceOtpStatus">-</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>OTP 인증</h2>
+        <p>웹에서 OTP를 생성한 뒤, 금고 키패드에 <b>고정 비밀번호 + OTP + #</b>을 입력합니다.</p>
+        <div class="otp-box" id="otpBox">------</div>
+        <p>남은 시간: <span id="otpRemaining">0</span>초</p>
+        <button onclick="generateOtp()">OTP 생성</button>
+    </div>
+
+    <div class="card">
+        <h2>제어</h2>
+        <button onclick="lockSafe()">수동 잠금</button>
+        <button class="gray-btn" onclick="resetRisk()">위험도 초기화</button>
+        <button class="gray-btn" onclick="calibrate()">기울기 재보정</button>
+    </div>
+
+    <div class="card">
+        <h2>인증 안내</h2>
+        <p>입력 예시: <b>1234 + OTP + #</b></p>
+        <p>OTP 유효시간은 <b>3분</b>이며, 사용 후 즉시 폐기됩니다.</p>
+        <p>OTP 없이 입력하면 위험도가 증가하고 LCD에 OTP 발급 안내가 표시됩니다.</p>
+    </div>
+
+    <div class="card full">
+        <h2>이벤트 로그</h2>
+        <div class="event-list" id="eventList"></div>
+    </div>
+</div>
+
+<script>
+    async function post(url) {
+        const res = await fetch(url, { method: "POST" });
+        return await res.json();
+    }
+
+    async function generateOtp() {
+        const data = await post("/api/otp");
+        if (data.ok) {
+            alert("OTP가 생성되었습니다: " + data.otp);
+            updateState();
+        }
+    }
+
+    async function lockSafe() {
+        await post("/api/control/lock");
+        updateState();
+    }
+
+    async function unlockSafe() {
+        const ok = confirm("테스트용 잠금 해제입니다. 실행할까요?");
+        if (!ok) return;
+        await post("/api/control/unlock");
+        updateState();
+    }
+
+    async function resetRisk() {
+        await post("/api/control/reset_risk");
+        updateState();
+    }
+
+    async function calibrate() {
+        await post("/api/control/calibrate");
+        updateState();
+    }
+
+    function riskClass(level) {
+        if (level === "INTRUSION") return "intrusion";
+        if (level === "DANGER") return "danger";
+        if (level === "WARNING") return "warning";
+        if (level === "CAUTION") return "caution";
+        return "normal";
+    }
+
+    async function updateState() {
+        const res = await fetch("/api/state");
+        const data = await res.json();
+
+        document.getElementById("safeLocked").textContent = data.safe_locked ? "LOCKED" : "UNLOCKED";
+        document.getElementById("doorClosed").textContent = data.door_closed ? "CLOSED" : "OPEN";
+
+        document.getElementById("riskScore").textContent = data.risk_score + "점";
+
+        const riskLevelEl = document.getElementById("riskLevel");
+        riskLevelEl.textContent = data.risk_level;
+        riskLevelEl.className = "value " + riskClass(data.risk_level);
+
+        document.getElementById("otpBox").textContent = data.otp || "------";
+        document.getElementById("otpRemaining").textContent = data.otp_remaining || 0;
+        document.getElementById("otpStatus").textContent = data.otp_status || "NONE";
+        document.getElementById("deviceOtpStatus").textContent = data.device_otp_status || "NONE";
+
+        const list = document.getElementById("eventList");
+        list.innerHTML = "";
+
+        const events = data.events || [];
+
+        if (events.length === 0) {
+            list.innerHTML = "<p style='color:#9fb0d8;'>아직 이벤트가 없습니다.</p>";
+            return;
+        }
+
+        events.forEach(ev => {
+            const div = document.createElement("div");
+            div.className = "event";
+
+            div.innerHTML = `
+                <b>${ev.event_type}</b> - ${ev.message}<br>
+                <small>${ev.timestamp} / 위험도: ${ev.risk_score} / 단계: ${ev.risk_level}</small>
+            `;
+
+            list.appendChild(div);
+        });
+    }
+
+    updateState();
+    setInterval(updateState, 1000);
+</script>
+</body>
+</html>
