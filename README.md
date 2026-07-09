@@ -102,7 +102,7 @@ pip install -r requirements.txt
 
 ---
 
-## 📷 Demo
+## 📷 screenshot(추가예정)
 
 - OTP 발급
 - 키패드 인증
