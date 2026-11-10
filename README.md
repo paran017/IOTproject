@@ -102,7 +102,7 @@ pip install -r requirements.txt
 
 ---
 
-## 📷 screenshot(추가예정)
+## 📷 screenshot
 <img width="1440" height="822" alt="Screenshot_20261110_101337_Gallery" src="https://github.com/user-attachments/assets/38d08fd7-3681-4e6c-a974-1d07ded7f081" />
 
 ---
